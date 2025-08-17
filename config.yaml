@@ -1,0 +1,21 @@
+run_name: multi_asset_kf
+seed: 42
+
+data:
+  source: yfinance  # or 'csv'
+  tickers: [AAPL, MSFT]
+  start: 2022-01-01
+  end: 2024-12-31
+  csv_path: data/data.csv
+
+model:
+  type: linear_kf
+  R: 1e-3
+  Q: 1e-5
+
+forecast:
+  horizon: 5
+  eval_metrics: [mae, rmse]
+
+output:
+  results_path: runs/results.csv

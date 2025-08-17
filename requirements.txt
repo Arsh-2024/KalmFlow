@@ -1,0 +1,7 @@
+filterpy
+yfinance
+streamlit
+pandas
+numpy
+PyYAML
+matplotlib
