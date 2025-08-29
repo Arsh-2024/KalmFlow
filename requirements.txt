@@ -6,3 +6,4 @@ numpy
 PyYAML
 matplotlib
 gunicorn
+Flask
