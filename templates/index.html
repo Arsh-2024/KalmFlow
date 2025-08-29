@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KalmFlow — Forecast UI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.25.2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <style>
+    :root{
+      --bg:#0f1113; /* charcoal */
+      --panel:#141618; /* graphite */
+      --muted:#9aa4ad;
+      --accent:#00e5ff; /* neon blue/teal */
+      --pos:#7fe58f; /* muted green */
+      --neg:#ff6b6b; /* muted red */
+      --glass: rgba(255,255,255,0.02);
+      --glow: 0 8px 30px rgba(0,229,255,0.06);
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10%, rgba(0,229,255,0.02), transparent), linear-gradient(180deg,var(--bg),#0b0c0d);color:#dbe6ea}
+    a{color:var(--accent);text-decoration:none}
+
+    /* Header */
+    .header{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid rgba(255,255,255,0.03);backdrop-filter:blur(6px);position:sticky;top:0;z-index:40;background:linear-gradient(180deg,rgba(11,12,13,0.9),rgba(11,12,13,0.6))}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,229,255,0.06),transparent);box-shadow:var(--glow)}
+    .wave{font-weight:700;color:var(--accent);font-size:16px}
+    nav.nav{display:flex;gap:14px;align-items:center}
+    nav.nav a{padding:8px 12px;border-radius:8px;color:var(--muted);font-weight:600}
+    nav.nav a.active{color:var(--accent);background:linear-gradient(90deg,rgba(0,229,255,0.04),transparent)}
+
+    .mobile-hamburger{display:none;cursor:pointer;padding:8px;border-radius:8px}
+    .mobile-hamburger svg{width:22px;height:22px}
+
+    .user{display:flex;gap:12px;align-items:center}
+    .profile{display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:10px;background:var(--glass);cursor:pointer}
+    .avatar{width:34px;height:34px;border-radius:8px;background:linear-gradient(45deg,#0b7bff,#00e5ff);display:flex;align-items:center;justify-content:center;font-weight:700}
+
+    /* Layout */
+    .wrap{display:flex;min-height:calc(100vh - 64px)}
+    .container{display:grid;grid-template-columns:320px 1fr;gap:18px;padding:18px;flex:1}
+    .sidebar{background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border-radius:12px;padding:16px;height:calc(100vh - 118px);overflow:auto;border:1px solid rgba(255,255,255,0.03);transition:transform .28s ease,opacity .28s}
+    .sidebar.collapsed{transform:translateX(-110%);opacity:0}
+    .main{border-radius:12px;padding:18px;height:calc(100vh - 118px);overflow:auto;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border:1px solid rgba(255,255,255,0.03)}
+
+    .section-title{font-size:13px;color:var(--muted);margin-bottom:8px}
+    .control{margin-bottom:12px}
+    select,input[type=file],input[type=date],input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    .multiselect{display:flex;flex-wrap:wrap;gap:8px}
+    .tag{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02);font-size:13px}
+
+    .run-btn{width:100%;padding:12px;border-radius:10px;background:linear-gradient(90deg,var(--accent),#00ffd3);color:#021219;font-weight:700;border:none;cursor:pointer;box-shadow:0 6px 30px rgba(0,229,255,0.12);transition:transform .12s}
+    .run-btn:active{transform:translateY(1px)}
+
+    /* Output panels */
+    .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02)}
+    .chart{height:380px}
+    .small-chart{height:200px}
+
+    /* Backtest table */
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+    th{color:var(--muted);font-weight:700}
+
+    /* sliders */
+    .slider-row{display:flex;gap:12px;align-items:center}
+    input[type=range]{width:100%}
+
+    /* progress */
+    .progress{height:12px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden}
+    .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#00ffd3);width:0%}
+
+    /* tooltip */
+    .hint{font-size:12px;color:var(--muted)}
+
+    /* admin badge */
+    .admin-badge{padding:4px 8px;border-radius:6px;background:#1a1d1f;color:var(--accent);font-weight:700;font-size:12px}
+
+    /* subtle animations */
+    .glow{box-shadow:0 6px 24px rgba(0,229,255,0.08)}
+
+    /* responsive */
+    @media(max-width:1100px){
+      .container{grid-template-columns:280px 1fr}
+    }
+    @media(max-width:900px){
+      .container{grid-template-columns:1fr;padding:12px}
+      .mobile-hamburger{display:block}
+      nav.nav{display:none}
+      .sidebar{position:fixed;left:12px;top:74px;bottom:12px;width:320px;z-index:50}
+      .sidebar.hidden{transform:translateX(-120%);}
+      .main{height:auto}
+      .chart{height:320px}
+    }
+
+    /* accessibility focus */
+    a:focus, button:focus, input:focus, select:focus{outline:2px solid rgba(0,229,255,0.12);outline-offset:2px}
+  </style>
+</head>
+<body>
+  <header class="header" role="banner">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 14c4-8 7-8 12-2 5 6 8 6 8 6" stroke="#00e5ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div>
+        <div class="wave">KalmFlow</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Kalman-filter forecasting studio</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="topnav" role="navigation" aria-label="Main navigation">
+      <a href="#" data-page="dashboard" class="active" tabindex="0">Dashboard</a>
+      <a href="#" data-page="backtest" tabindex="0">Backtesting</a>
+      <a href="#" data-page="models" tabindex="0">Models</a>
+      <a href="#" data-page="reports" tabindex="0">Reports</a>
+      <a href="#" data-page="admin" id="admin-nav" style="display:none" tabindex="0">Admin</a>
+    </nav>
+
+    <div style="display:flex;gap:12px;align-items:center">
+      <button class="mobile-hamburger" id="mobileMenuBtn" aria-label="Open menu" title="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 12h18M3 18h18" stroke-width="1.8"/></svg>
+      </button>
+
+      <div class="user">
+        <div class="hint" id="roleLabel">Role: <strong id="role">User</strong></div>
+        <div class="profile" id="profileBtn" title="Click to toggle role" role="button" aria-pressed="false" tabindex="0">
+          <div class="avatar" aria-hidden="true">KF</div>
+          <div style="font-size:13px">K. Francis</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="container" role="main">
+      <aside class="sidebar" id="sidebar" aria-label="Controls">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            <div class="section-title" style="margin:0">Inputs</div>
+            <div class="hint">Select assets, date range & model</div>
+          </div>
+          <div>
+            <button id="collapseBtn" title="Collapse sidebar" aria-label="Collapse sidebar" style="background:transparent;border:none;color:var(--muted);cursor:pointer">☰</button>
+          </div>
+        </div>
+
+        <div class="control">
+          <label class="section-title">Select assets <span class="hint">(multi)</span></label>
+          <div class="multiselect" id="assetTags" aria-live="polite"></div>
+          <select id="assetSelect" multiple size="6" style="margin-top:8px" aria-label="Asset selector">
+            <option>SPY (Equity)</option>
+            <option>QQQ (Equity)</option>
+            <option>BTC-USD (Crypto)</option>
+            <option>ETH-USD (Crypto)</option>
+            <option>GLD (Commodity)</option>
+            <option>US10Y (Fixed Income)</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label class="section-title">Date range</label>
+          <div style="display:flex;gap:8px">
+            <input type="date" id="startDate">
+            <input type="date" id="endDate">
+          </div>
+        </div>
+
+        <div class="control">
+          <label class="section-title">Filter type</label>
+          <select id="filterType" aria-label="Filter type selector">
+            <option>Linear KF</option>
+            <option>Extended KF</option>
+            <option>Unscented KF</option>
+            <option>Hybrid ML-KF</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label class="section-title">Upload config (JSON / YAML)</label>
+          <input type="file" id="cfgUpload" accept=".json,.yaml,.yml" aria-label="Upload config file">
+          <div id="cfgStatus" class="hint" style="margin-top:6px">No config loaded</div>
+        </div>
+
+        <div style="margin-top:10px">
+          <button class="run-btn" id="runBtn" aria-live="polite">Run Forecast</button>
+        </div>
+
+        <div style="margin-top:14px">
+          <div class="section-title">Streaming / Live</div>
+          <div class="hint">Toggle visual streaming of forecast updates</div>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="streamToggle"> Enable streaming</label>
+        </div>
+
+        <div style="margin-top:14px">
+          <div class="section-title">Model tuning</div>
+          <div class="slider-row">
+            <div style="width:28%">Q</div>
+            <div style="width:72%"><input type="range" id="qSlider" min="0.0001" max="1" step="0.0001" value="0.01"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Process noise (Q): <span id="qVal">0.01</span></div>
+          <div class="slider-row" style="margin-top:10px">
+            <div style="width:28%">R</div>
+            <div style="width:72%"><input type="range" id="rSlider" min="0.0001" max="1" step="0.0001" value="0.05"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Observation noise (R): <span id="rVal">0.05</span></div>
+        </div>
+
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="saveCfg" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted);cursor:pointer">Save config</button>
+          <button id="loadCfg" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted);cursor:pointer">Load config</button>
+        </div>
+
+      </aside>
+
+      <main class="main" id="mainArea">
+        <!-- pages rendered here -->
+        <section id="dashboardPage">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+            <h2 style="margin:0">Forecasting Dashboard</h2>
+            <div style="display:flex;gap:12px;align-items:center">
+              <div style="text-align:right">
+                <div style="font-size:12px;color:var(--muted)">Confidence</div>
+                <div id="confGauge" style="width:88px;height:88px"></div>
+              </div>
+              <div style="min-width:200px">
+                <div style="font-size:12px;color:var(--muted)">Latest run</div>
+                <div id="runSummary" style="font-weight:700">Idle</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <div class="card">
+                <div class="section-title">Actual vs Predicted</div>
+                <div id="tsChart" class="chart" role="img" aria-label="Time series: actual vs predicted"></div>
+              </div>
+
+              <div style="height:18px"></div>
+
+              <div class="card">
+                <div class="section-title">Volatility (smoothed vs realized)</div>
+                <div id="volChart" class="small-chart" role="img"></div>
+              </div>
+            </div>
+
+            <div>
+              <div class="card">
+                <div class="section-title">Latent States Monitor</div>
+                <div id="stateVis" class="small-chart" role="img"></div>
+              </div>
+
+              <div style="height:12px"></div>
+
+              <div class="card">
+                <div class="section-title">Recent metrics</div>
+                <table>
+                  <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                  <tbody>
+                    <tr><td>MAE</td><td id="m_mae">—</td></tr>
+                    <tr><td>RMSE</td><td id="m_rmse">—</td></tr>
+                    <tr><td>MAPE</td><td id="m_mape">—</td></tr>
+                    <tr><td>VaR breach rate</td><td id="m_var">—</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="backtestPage" style="display:none">
+          <h2>Backtesting</h2>
+          <div class="card" style="margin-top:10px">
+            <div class="section-title">Run backtest</div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <button class="run-btn" id="runBacktestBtn" style="width:220px">Start Backtest</button>
+              <div style="flex:1;min-width:220px">
+                <div class="progress"><i id="btProgress"></i></div>
+                <div style="font-size:12px;color:var(--muted);margin-top:6px">Progress: <span id="btPct">0%</span></div>
+              </div>
+              <div>
+                <button class="run-btn" id="dlCSV" style="width:140px;background:transparent;color:var(--accent);border:1px solid rgba(0,229,255,0.08)">Download CSV</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="card">
+            <div class="section-title">Metrics table</div>
+            <table>
+              <thead>
+                <tr><th>Asset</th><th>MAE</th><th>RMSE</th><th>MAPE</th><th>VaR breach</th></tr>
+              </thead>
+              <tbody id="metricsTable"></tbody>
+            </table>
+          </div>
+
+          <div style="height:12px"></div>
+          <div class="card">
+            <div class="section-title">Performance heatmap</div>
+            <div id="heatmap" class="small-chart" role="img"></div>
+          </div>
+        </section>
+
+        <section id="modelsPage" style="display:none">
+          <h2>Model Explorer</h2>
+          <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <div style="width:220px;min-width:200px">
+              <select id="modelSwitch" aria-label="Choose model">
+                <option>Linear KF</option>
+                <option>Extended KF</option>
+                <option>Unscented KF</option>
+                <option>Hybrid ML-KF</option>
+              </select>
+              <div style="font-size:12px;color:var(--muted);margin-top:6px">Compare two models</div>
+              <select id="modelCompare" style="margin-top:6px">
+                <option>Off</option>
+                <option>Overlay model A</option>
+              </select>
+            </div>
+
+            <div style="flex:1;min-width:240px">
+              <div class="section-title">Parameter tuning (live)</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:180px">
+                  <label class="section-title">Kalman Gain boost</label>
+                  <input type="range" id="gainSlider" min="0" max="2" step="0.01" value="1">
+                  <div class="hint">Current: <span id="gainVal">1.00</span></div>
+                </div>
+                <div style="flex:1;min-width:180px">
+                  <label class="section-title">Smoothing factor</label>
+                  <input type="range" id="smoothSlider" min="0" max="1" step="0.01" value="0.7">
+                  <div class="hint">Current: <span id="smoothVal">0.70</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+          <div class="card">
+            <div class="section-title">Compare models (overlay)</div>
+            <div id="modelCompareChart" class="chart" role="img"></div>
+          </div>
+        </section>
+
+        <section id="reportsPage" style="display:none">
+          <h2>Reports</h2>
+          <div class="card">
+            <div class="section-title">Generate PDF report</div>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap">
+              <button class="run-btn" id="genPdf">Generate PDF</button>
+              <button class="run-btn" id="dlSnapshot" style="background:transparent;color:var(--accent);border:1px solid rgba(0,229,255,0.08)">Download snapshot (PNG)</button>
+              <div style="font-size:12px;color:var(--muted)">PDF contains charts and metrics snapshot</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="adminPage" style="display:none">
+          <h2>Admin</h2>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div class="section-title">Access control</div>
+                <div class="hint">Visible only to admins</div>
+              </div>
+              <div class="admin-badge">Admin</div>
+            </div>
+
+            <div style="margin-top:10px">
+              <div class="section-title">System resource monitor</div>
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                <div style="width:200px;min-width:160px">
+                  <div class="hint">CPU</div>
+                  <div class="progress"><i id="cpuBar" style="width:32%"></i></div>
+                </div>
+                <div style="width:200px;min-width:160px">
+                  <div class="hint">Memory</div>
+                  <div class="progress"><i id="memBar" style="width:46%"></i></div>
+                </div>
+                <div style="width:200px;min-width:160px">
+                  <div class="hint">GPU</div>
+                  <div class="progress"><i id="gpuBar" style="width:12%"></i></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="height:12px"></div>
+            <div class="section-title">Run logs (recent)</div>
+            <div style="max-height:160px;overflow:auto;border-radius:8px;padding:8px;background:rgba(255,255,255,0.01)">
+              <pre id="runLogs" style="font-size:12px;color:var(--muted);margin:0">(no logs)</pre>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <script>
+    /* ---------- Utilities and state ---------- */
+    const state = {
+      role: localStorage.getItem('kalmflow_role') || 'User',
+      selectedAssets: JSON.parse(localStorage.getItem('kalmflow_assets') || 'null') || ['SPY (Equity)'],
+      streaming: JSON.parse(localStorage.getItem('kalmflow_streaming') || 'false'),
+      lastConfig: JSON.parse(localStorage.getItem('kalmflow_cfg') || 'null') || null
+    }
+
+    function $(id){return document.getElementById(id)}
+
+    // render asset tags & persist
+    function renderAssetTags(){
+      const wrapper = $('assetTags'); wrapper.innerHTML='';
+      state.selectedAssets.forEach(a=>{
+        const el = document.createElement('div'); el.className='tag'; el.textContent=a; el.setAttribute('role','listitem');
+        // add small remove button for quick edits
+        const btn = document.createElement('button'); btn.textContent='✕'; btn.title='Remove'; btn.style.marginLeft='8px'; btn.style.background='transparent'; btn.style.border='none'; btn.style.color='var(--muted)'; btn.style.cursor='pointer'; btn.onclick = ()=>{ state.selectedAssets = state.selectedAssets.filter(x=>x!==a); persistState(); renderAssetTags(); updateAssetSelect(); };
+        el.appendChild(btn);
+        wrapper.appendChild(el);
+      })
+      $('assetTags').setAttribute('aria-label', state.selectedAssets.join(', '));
+    }
+
+    function persistState(){
+      localStorage.setItem('kalmflow_assets', JSON.stringify(state.selectedAssets));
+      localStorage.setItem('kalmflow_streaming', JSON.stringify(state.streaming));
+      localStorage.setItem('kalmflow_role', state.role);
+      if(state.lastConfig) localStorage.setItem('kalmflow_cfg', JSON.stringify(state.lastConfig));
+    }
+
+    // initialize dates (last year)
+    const today = new Date();
+    const lastYear = new Date(); lastYear.setFullYear(today.getFullYear()-1);
+    $('startDate').value = lastYear.toISOString().slice(0,10);
+    $('endDate').value = today.toISOString().slice(0,10);
+
+    // nav behaviour + keyboard
+    function setActiveNav(pageEl){ document.querySelectorAll('#topnav a').forEach(x=>x.classList.remove('active')); if(pageEl) pageEl.classList.add('active'); }
+    document.querySelectorAll('#topnav a').forEach(a=>a.addEventListener('click',ev=>{ ev.preventDefault(); const p=a.dataset.page; switchPage(p); setActiveNav(a); }))
+
+    function switchPage(page){
+      ['dashboard','backtest','models','reports','admin'].forEach(p=>{ const el = $(p+'Page'); if(!el) return; el.style.display = (p===page? 'block' : 'none'); })
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    // mobile hamburger
+    $('mobileMenuBtn').addEventListener('click', ()=>{ const s=$('sidebar'); s.classList.toggle('hidden'); s.classList.remove('collapsed'); });
+    $('collapseBtn').addEventListener('click', ()=>{ const s=$('sidebar'); s.classList.toggle('collapsed'); });
+
+    // profile toggles role (simulate)
+    function updateRoleUI(){ $('role').textContent = state.role; if(state.role==='Admin'){ $('admin-nav').style.display='inline-block'; } else { $('admin-nav').style.display='none'; }
+      persistState();
+    }
+    $('profileBtn').addEventListener('click',()=>{ state.role = state.role==='User' ? 'Admin' : 'User'; $('profileBtn').setAttribute('aria-pressed', state.role==='Admin'); updateRoleUI(); });
+    // keyboard toggle
+    $('profileBtn').addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); $('profileBtn').click(); } });
+
+    // reflect initial assets
+    renderAssetTags();
+    function updateAssetSelect(){ const sel = $('assetSelect'); Array.from(sel.options).forEach(o=> o.selected = state.selectedAssets.includes(o.text)); }
+    updateAssetSelect();
+
+    // sliders
+    $('qSlider').addEventListener('input',e=>{$('qVal').textContent = parseFloat(e.target.value).toFixed(4)})
+    $('rSlider').addEventListener('input',e=>{$('rVal').textContent = parseFloat(e.target.value).toFixed(4)})
+
+    $('gainSlider')?.addEventListener('input',e=>{$('gainVal').textContent = parseFloat(e.target.value).toFixed(2); updateModelCompare()})
+    $('smoothSlider')?.addEventListener('input',e=>{$('smoothVal').textContent = parseFloat(e.target.value).toFixed(2); updateModelCompare()})
+
+    $('assetSelect').addEventListener('change',e=>{ const opts = Array.from(e.target.selectedOptions).map(o=>o.text); state.selectedAssets = opts.length? opts : ['SPY (Equity)']; renderAssetTags(); persistState(); })
+
+    $('streamToggle').addEventListener('change',e=>{ state.streaming = e.target.checked; persistState(); })
+    // reflect streaming initial
+    $('streamToggle').checked = state.streaming;
+
+    /* ---------- Config upload / save / load ---------- */
+    $('cfgUpload').addEventListener('change', async (ev)=>{
+      const f = ev.target.files[0]; if(!f) return; const text = await f.text();
+      let cfg=null; try{ cfg = JSON.parse(text); } catch(err){ try{ cfg = jsyaml.load(text); }catch(e){ cfg = null; } }
+      if(cfg){ state.lastConfig = cfg; $('cfgStatus').textContent = 'Config loaded'; persistState(); } else { $('cfgStatus').textContent = 'Failed to parse config'; }
+    })
+
+    $('saveCfg').addEventListener('click', ()=>{
+      const cfg = {
+        assets: state.selectedAssets,
+        start: $('startDate').value,
+        end: $('endDate').value,
+        filter: $('filterType').value,
+        q: $('qSlider').value,
+        r: $('rSlider').value
+      };
+      const blob = new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='kalmflow_config.json'; a.click(); URL.revokeObjectURL(url);
+      state.lastConfig = cfg; persistState(); $('cfgStatus').textContent = 'Config saved locally';
+    })
+
+    $('loadCfg').addEventListener('click', ()=>{
+      const cfg = state.lastConfig; if(!cfg){ alert('No saved config in local storage'); return; }
+      if(cfg.assets) { state.selectedAssets = cfg.assets; renderAssetTags(); updateAssetSelect(); }
+      if(cfg.start) $('startDate').value = cfg.start; if(cfg.end) $('endDate').value = cfg.end; if(cfg.filter) $('filterType').value = cfg.filter; if(cfg.q) $('qSlider').value = cfg.q; if(cfg.r) $('rSlider').value = cfg.r;
+      $('qVal').textContent = parseFloat($('qSlider').value).toFixed(4); $('rVal').textContent = parseFloat($('rSlider').value).toFixed(4);
+      $('cfgStatus').textContent = 'Config loaded from local storage';
+    })
+
+    /* ---------- Plotly placeholders & simulation (improved) ---------- */
+    const tsLayout = {margin:{t:20,l:40,r:20,b:40},legend:{orientation:'h'},plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',hovermode:'x unified'};
+
+    function genSeries(n=180){ const t=[]; const y=[]; let v=100; for(let i=0;i<n;i++){ t.push(new Date(Date.now() - (n-i)*86400000)); v += (Math.random()-0.48)*1.6; y.push(Number(v.toFixed(4))); } return {t,y} }
+
+    const base = genSeries(240);
+    let pred = base.y.map((yy,i)=> Number((yy + (Math.random()-0.5)*2).toFixed(4)));
+    let upper = pred.map(p=>Number((p + Math.abs((Math.random())*3 + 1)).toFixed(4)));
+    let lower = pred.map(p=>Number((p - Math.abs((Math.random())*3 + 1)).toFixed(4)));
+
+    Plotly.newPlot('tsChart', [
+      {x:base.t,y:base.y,name:'Actual',mode:'lines',line:{color:'#dbe6ea',width:1.6}},
+      {x:base.t,y:pred,name:'Predicted',mode:'lines',line:{color: 'rgba(0,229,255,0.95)',width:2}},
+      {x:base.t.concat(base.t.slice().reverse()),y:upper.concat(lower.slice().reverse()),fill:'toself',fillcolor:'rgba(0,229,255,0.06)',line:{color:'transparent'},name:'Confidence'}
+    ],tsLayout,{responsive:true})
+
+    // volatility chart
+    const volX = base.t; const sm = base.y.map((v,i)=> Math.abs((i>0? base.y[i]-base.y[i-1]:0))); const realized = sm.map(v=>Number((v*10).toFixed(4)));
+    Plotly.newPlot('volChart', [{x:volX,y:sm,name:'Smoothed',mode:'lines'},{x:volX,y:realized,name:'Realized',mode:'lines'}],{margin:{t:10,l:30,r:10,b:30},plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)'})
+
+    // latent states (simulate HMM-ish)
+    const states = Array.from({length:base.y.length}).map(()=> Math.random()>0.8?2: (Math.random()>0.5?1:0));
+    Plotly.newPlot('stateVis',[{x:base.t,y:states,mode:'markers+lines',marker:{size:6}}],{margin:{t:10,l:30,b:30}})
+
+    // confidence gauge (donut)
+    function drawGauge(val){ const v = Math.max(0,Math.min(1,val)); Plotly.newPlot('confGauge',[{values:[v,1-v],labels:['Conf',''],type:'pie',hole:0.6,textinfo:'none',marker:{colors:['rgba(0,229,255,0.9)','rgba(255,255,255,0.02)']}}],{margin:{t:0,b:0,l:0,r:0},showlegend:false}) }
+    drawGauge(0.72)
+
+    // model compare chart
+    function updateModelCompare(){ const gain = parseFloat($('gainSlider').value||1); const smooth = parseFloat($('smoothSlider').value||0.7); const modA = base.y.map((v,i)=> Number((v + Math.sin(i/10)*gain).toFixed(4))); const modB = base.y.map((v,i)=> Number((v + Math.cos(i/9)*(1/gain)).toFixed(4))); Plotly.react('modelCompareChart',[{x:base.t,y:modA,name:'Model A'},{x:base.t,y:modB,name:'Model B'}],{margin:{t:10}}) }
+    updateModelCompare();
+
+    // heatmap
+    const assets = ['Equities','Crypto','Commodities','Fixed Income'];
+    const heatZ = assets.map(()=> Array.from({length:5}).map(()=> Number((Math.random()*2-1).toFixed(2))));
+    Plotly.newPlot('heatmap',[{z:heatZ,x:['Short','Mid','Long','Ultra','All'],y:assets,type:'heatmap',colorscale:'Viridis'}],{margin:{t:10,l:60}})
+
+    /* ---------- Actions: Run Forecast (streaming & robust) ---------- */
+    let runAbort = false;
+    $('runBtn').addEventListener('click', async ()=>{
+      runAbort = false; const btn = $('runBtn'); btn.disabled=true; btn.textContent='Running...'; $('runSummary').textContent='Running forecast...';
+      // gather inputs
+      const assets = state.selectedAssets.slice(); const start = $('startDate').value; const end = $('endDate').value; const filter = $('filterType').value;
+      const q = parseFloat($('qSlider').value); const r = parseFloat($('rSlider').value);
+      // show small validation
+      if(!assets.length){ alert('Please select at least one asset'); btn.disabled=false; btn.textContent='Run Forecast'; return; }
+
+      // Simulate a compute pipeline broken into steps, with the ability to abort mid-stream
+      const steps = state.streaming? 40 : 1;
+      let simulatedPred = pred.slice();
+      for(let s=0; s<steps; s++){
+        if(runAbort) break;
+        // simulated compute latency (smaller when streaming)
+        await new Promise(res=>setTimeout(res, state.streaming? 90 : 600));
+        // simulate Kalman update: small corrections scaled by noise settings
+        for(let k=0;k<5;k++){
+          const idx = Math.floor(Math.random()*simulatedPred.length);
+          const noiseFactor = (Math.random()-0.5) * (0.8 + q*6 - r*2);
+          simulatedPred[idx] = Number((simulatedPred[idx] + noiseFactor).toFixed(4));
+        }
+        // update confidence: higher q (process noise) lowers confidence; r affects it too
+        const conf = Math.max(0.02, 0.92 - q*0.6 - Math.abs(r-0.05)*0.8 - Math.random()*0.05);
+        drawGauge(conf);
+        // update chart efficiently
+        Plotly.update('tsChart',{y:[base.y,simulatedPred,upper.concat(lower.slice().reverse())]},{},[0,1,2]);
+        // update metrics snapshot (fake but consistent looking)
+        $('m_mae').textContent = (Math.abs(simulatedPred.reduce((a,b,i)=>a + (b - base.y[i]),0))/simulatedPred.length).toFixed(3);
+        // RMSE
+        const rmse = Math.sqrt(simulatedPred.reduce((a,b,i)=>a + Math.pow((b - base.y[i]),2),0)/simulatedPred.length);
+        $('m_rmse').textContent = rmse.toFixed(3);
+        $('m_mape').textContent = (100 * (simulatedPred.reduce((a,b,i)=> a + Math.abs((b-base.y[i])/base.y[i]),0)/simulatedPred.length)).toFixed(2) + '%';
+        $('m_var').textContent = (Math.random()*2).toFixed(2) + '%';
+        // admin logs
+        if(state.role==='Admin'){
+          const logs = $('runLogs'); const line = new Date().toISOString()+ ' — step '+(s+1)+' completed'; logs.textContent = (logs.textContent==='(no logs)'? line : logs.textContent + '
+' + line); logs.scrollTop = logs.scrollHeight;
+        }
+      }
+      btn.disabled=false; btn.textContent='Run Forecast'; $('runSummary').textContent = `Completed — ${state.selectedAssets.join(', ')} (${new Date().toLocaleString()})`;
+      persistState();
+    })
+
+    // abort support (press Escape to abort ongoing run)
+    document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ runAbort = true; $('runSummary').textContent = 'Run aborted'; $('runBtn').disabled=false; $('runBtn').textContent='Run Forecast'; } })
+
+    /* ---------- Backtest runner ---------- */
+    $('runBacktestBtn').addEventListener('click',async ()=>{
+      const bar = $('btProgress'); const pct = $('btPct'); $('metricsTable').innerHTML='';
+      // simple progress simulation with async updates
+      for(let i=0;i<=100;i+=5){ bar.style.width = i+'%'; pct.textContent = i+'%'; await new Promise(r=>setTimeout(r,55)); }
+      // populate mock metrics
+      const rows = state.selectedAssets.map(a=> `<tr><td>${a}</td><td>${(Math.random()*0.5).toFixed(3)}</td><td>${(Math.random()*0.8).toFixed(3)}</td><td>${(Math.random()*5).toFixed(2)}%</td><td>${(Math.random()*3).toFixed(2)}%</td></tr>`).join('');
+      $('metricsTable').innerHTML = rows;
+      // tiny reset
+      setTimeout(()=>{ bar.style.width='0%'; pct.textContent='0%'; },800);
+    })
+
+    /* ---------- Downloads ---------- */
+    $('dlCSV').addEventListener('click',()=>{
+      const rows = [ ['asset','mae','rmse','mape','var'] ];
+      const tr = document.querySelectorAll('#metricsTable tr'); tr.forEach(r=>{ const cols=r.querySelectorAll('td'); if(cols.length) rows.push([cols[0].textContent,cols[1].textContent,cols[2].textContent,cols[3].textContent,cols[4].textContent]) });
+      const csv = rows.map(r=> r.join(',')).join('
+'); const blob = new Blob([csv],{type:'text/csv'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='backtest_metrics.csv'; a.click(); URL.revokeObjectURL(url);
+    })
+
+    /* ---------- Snapshot + PDF generation (reports) ---------- */
+    $('dlSnapshot').addEventListener('click', async ()=>{
+      const imgData = await Plotly.toImage('tsChart',{format:'png',height:500,width:1000});
+      const a = document.createElement('a'); a.href = imgData; a.download = 'ts_snapshot.png'; a.click();
+    })
+
+    $('genPdf').addEventListener('click',async ()=>{
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({orientation:'landscape'});
+      doc.setFontSize(16); doc.text('KalmFlow — Report snapshot',14,20);
+      const imgData = await Plotly.toImage('tsChart',{format:'png',height:300,width:800});
+      doc.addImage(imgData,'PNG',10,30,260,90);
+      doc.setFontSize(10); doc.text('Generated: '+new Date().toLocaleString(),14,130);
+      // attach metrics snapshot
+      doc.setFontSize(12); doc.text('Metrics:',14,140); doc.setFontSize(10);
+      doc.text(`MAE: ${$('m_mae').textContent}`,14,148); doc.text(`RMSE: ${$('m_rmse').textContent}`,60,148); doc.text(`MAPE: ${$('m_mape').textContent}`,120,148); doc.text(`VaR breach: ${$('m_var').textContent}`,200,148);
+      doc.save('kalmflow_report.pdf');
+    })
+
+    /* ---------- small helpers ---------- */
+    function updateModelCompare(){ const gain = parseFloat($('gainSlider').value); const modA = base.y.map((v,i)=> Number((v + Math.sin(i/10)*gain).toFixed(4))); const modB = base.y.map((v,i)=> Number((v + Math.cos(i/9)*(1/gain)).toFixed(4))); Plotly.react('modelCompareChart',[{x:base.t,y:modA,name:'Model A'},{x:base.t,y:modB,name:'Model B'}],{margin:{t:10}}) }
+
+    // initial page
+    const initialNav = document.querySelector('#topnav a[data-page="dashboard"]'); initialNav.click();
+    updateRoleUI(); renderAssetTags();
+
+    // make charts responsive on resize
+    let resizeTimer=null; window.addEventListener('resize',()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>{ ['tsChart','modelCompareChart','heatmap','volChart'].forEach(id=>{ try{ Plotly.Plots.resize(id); }catch(e){} }); },220) });
+
+    // keyboard shortcuts: D=dashboard, B=backtest, M=models, R=reports, A=admin (if role)
+    document.addEventListener('keydown',(e)=>{
+      if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
+      const key = e.key.toLowerCase(); if(key==='d'){ document.querySelector('#topnav a[data-page="dashboard"]').click(); }
+      if(key==='b'){ document.querySelector('#topnav a[data-page="backtest"]').click(); }
+      if(key==='m'){ document.querySelector('#topnav a[data-page="models"]').click(); }
+      if(key==='r'){ document.querySelector('#topnav a[data-page="reports"]').click(); }
+      if(key==='a' && state.role==='Admin'){ document.querySelector('#topnav a[data-page="admin"]').click(); }
+    })
+
+  </script>
+</body>
+</html>
